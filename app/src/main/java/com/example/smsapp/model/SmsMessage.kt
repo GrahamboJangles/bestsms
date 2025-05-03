@@ -9,5 +9,21 @@ data class SmsMessage(
     val read: Int = 0, // 0 = unread, 1 = read
     val threadId: Long = 0,
     val isRcs: Boolean = false,
-    val contactName: String = ""
-) 
+    val contactName: String = "",
+    val hasAttachment: Boolean = false,
+    val attachmentType: AttachmentType = AttachmentType.NONE,
+    val attachmentUri: String = "",
+    val attachmentContentType: String = "",
+    val attachmentSize: Long = 0
+)
+
+enum class AttachmentType {
+    NONE,
+    IMAGE,
+    VIDEO,
+    AUDIO,
+    DOCUMENT,
+    LOCATION,
+    CONTACT,
+    OTHER
+} 

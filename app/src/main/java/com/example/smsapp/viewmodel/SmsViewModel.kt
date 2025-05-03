@@ -1,11 +1,13 @@
 package com.example.smsapp.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.smsapp.model.AttachmentType
 import com.example.smsapp.model.ContactGroup
 import com.example.smsapp.model.Conversation
 import com.example.smsapp.model.SmsMessage
@@ -47,6 +49,7 @@ class SmsViewModel(application: Application) : AndroidViewModel(application) {
     
     // Current conversation contact
     val currentContact = mutableStateOf("")
+    val currentContactName = mutableStateOf("")
     
     // New message composition
     val currentRecipient = mutableStateOf("")
@@ -62,6 +65,17 @@ class SmsViewModel(application: Application) : AndroidViewModel(application) {
     
     // New state for loading messages
     private val _isLoadingMessages = mutableStateOf(false)
+    
+    // Attachment handling
+    val showAttachmentOptions = mutableStateOf(false)
+    val currentAttachmentUri = mutableStateOf<Uri?>(null)
+    val currentAttachmentType = mutableStateOf(AttachmentType.NONE)
+    val currentAttachmentContentType = mutableStateOf("")
+    val isProcessingAttachment = mutableStateOf(false)
+    
+    // Dialog for viewing attachments
+    val showAttachmentDialog = mutableStateOf(false)
+    val selectedAttachment = mutableStateOf<SmsMessage?>(null)
     
     init {
         checkPermissions()
@@ -266,6 +280,11 @@ class SmsViewModel(application: Application) : AndroidViewModel(application) {
                                          .sortedBy { it.date }
         _messages.addAll(filteredMessages)
         
+        // Set contact name (use saved contact name or look it up)
+        val contactName = _allConversations.find { it.address == contactAddress }?.contactName 
+            ?: SmsUtils.getContactName(getApplication(), contactAddress)
+        currentContactName.value = contactName
+        
         // Pre-fill the recipient field
         currentRecipient.value = contactAddress
     }
@@ -273,22 +292,41 @@ class SmsViewModel(application: Application) : AndroidViewModel(application) {
     fun goToConversationList() {
         isInConversationList.value = true
         currentContact.value = ""
+        currentContactName.value = ""
     }
     
     fun composeNewMessage() {
         isInConversationList.value = false
         currentContact.value = ""
+        currentContactName.value = ""
         currentRecipient.value = ""
         currentMessage.value = ""
         _messages.clear()
     }
     
     fun sendMessage() {
-        if (currentRecipient.value.isNotEmpty() && currentMessage.value.isNotEmpty()) {
+        if (currentRecipient.value.isNotEmpty() && (currentMessage.value.isNotEmpty() || currentAttachmentUri.value != null)) {
             val recipient = currentRecipient.value
             val messageText = currentMessage.value
+            val hasAttachment = currentAttachmentUri.value != null
             
-            SmsUtils.sendSms(recipient, messageText)
+            // Use RCS if available and we have attachments
+            val isRcs = hasAttachment && SmsUtils.canUseRcs(getApplication())
+            
+            // Send the message
+            if (hasAttachment) {
+                val attachmentUri = currentAttachmentUri.value.toString()
+                SmsUtils.sendMediaMessage(
+                    getApplication(),
+                    recipient, 
+                    messageText, 
+                    attachmentUri,
+                    currentAttachmentType.value,
+                    isRcs
+                )
+            } else {
+                SmsUtils.sendSms(recipient, messageText)
+            }
             
             // Look up contact name
             val contactName = SmsUtils.getContactName(getApplication(), recipient)
@@ -302,8 +340,12 @@ class SmsViewModel(application: Application) : AndroidViewModel(application) {
                 type = android.provider.Telephony.Sms.MESSAGE_TYPE_SENT,
                 read = 1,
                 threadId = 0,
-                isRcs = false,
-                contactName = contactName
+                isRcs = isRcs,
+                contactName = contactName,
+                hasAttachment = hasAttachment,
+                attachmentType = if (hasAttachment) currentAttachmentType.value else AttachmentType.NONE,
+                attachmentUri = currentAttachmentUri.value?.toString() ?: "",
+                attachmentContentType = currentAttachmentContentType.value
             )
             
             // Add to current conversation (maintaining chronological order)
@@ -320,8 +362,32 @@ class SmsViewModel(application: Application) : AndroidViewModel(application) {
                 currentContact.value = recipient
             }
             
-            // Clear the message input
+            // Clear the message input and attachment
             currentMessage.value = ""
+            clearAttachment()
         }
+    }
+    
+    fun addAttachment(uri: Uri, type: AttachmentType, contentType: String) {
+        currentAttachmentUri.value = uri
+        currentAttachmentType.value = type
+        currentAttachmentContentType.value = contentType
+        showAttachmentOptions.value = false
+    }
+    
+    fun clearAttachment() {
+        currentAttachmentUri.value = null
+        currentAttachmentType.value = AttachmentType.NONE
+        currentAttachmentContentType.value = ""
+    }
+    
+    fun viewAttachment(message: SmsMessage) {
+        selectedAttachment.value = message
+        showAttachmentDialog.value = true
+    }
+    
+    fun closeAttachmentDialog() {
+        showAttachmentDialog.value = false
+        selectedAttachment.value = null
     }
 } 

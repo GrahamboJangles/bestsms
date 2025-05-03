@@ -50,6 +50,12 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     
+    // Material Icons Extended
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
+    
+    // Coil for image loading
+    implementation("io.coil-kt:coil-compose:2.5.0")
+    
     // ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")

@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
@@ -17,6 +18,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.example.smsapp.model.AttachmentType
 import com.example.smsapp.model.SmsMessage
 import java.io.File
 import java.io.FileOutputStream
@@ -1682,5 +1684,87 @@ object SmsUtils {
             isRcs = true,  // Mark as RCS since it came from Samsung provider
             contactName = ""
         )
+    }
+
+    /**
+     * Checks if RCS is supported and available on the device
+     */
+    fun canUseRcs(context: Context): Boolean {
+        return try {
+            // Check for the presence of Samsung Advanced Messaging provider
+            val isSamsungRcsAvailable = SAMSUNG_MESSAGING_URIS.any { uri ->
+                try {
+                    val cursor = context.contentResolver.query(
+                        Uri.parse(uri),
+                        null, null, null, null
+                    )
+                    val hasResults = cursor?.moveToFirst() ?: false
+                    cursor?.close()
+                    hasResults
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            
+            // Check for Google Messages RCS
+            val isGoogleMessagesRcsAvailable = try {
+                val packageManager = context.packageManager
+                val googleMessagesInfo = packageManager.getPackageInfo("com.google.android.apps.messaging", 0)
+                true
+            } catch (e: Exception) {
+                false
+            }
+            
+            isSamsungRcsAvailable || isGoogleMessagesRcsAvailable
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Sends a media message with an attachment
+     */
+    fun sendMediaMessage(
+        context: Context,
+        recipient: String,
+        body: String,
+        attachmentUri: String,
+        attachmentType: AttachmentType,
+        useRcs: Boolean = false
+    ) {
+        try {
+            // For simplicity, we'll use the default SMS app to send media messages
+            // A full implementation would use MMS APIs or carrier services
+            
+            // When sending through default messaging app, we'll create an intent
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                when (attachmentType) {
+                    AttachmentType.IMAGE -> type = "image/*"
+                    AttachmentType.VIDEO -> type = "video/*"
+                    AttachmentType.AUDIO -> type = "audio/*"
+                    AttachmentType.DOCUMENT -> type = "application/*"
+                    else -> type = "*/*"
+                }
+                
+                putExtra(Intent.EXTRA_STREAM, Uri.parse(attachmentUri))
+                
+                if (body.isNotEmpty()) {
+                    putExtra(Intent.EXTRA_TEXT, body)
+                }
+                
+                // Add phone number as recipient
+                putExtra("address", recipient)
+                putExtra(Intent.EXTRA_PHONE_NUMBER, recipient)
+                
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+            
+            // Start as new activity
+            context.startActivity(intent)
+            
+            Log.d(TAG, "Media message sent to $recipient")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending media message", e)
+        }
     }
 } 
